@@ -8,11 +8,17 @@ import math
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self):
+    def __init__(self, d_model:int, max_len:int = 4096):
         super().__init__()
-    
-    def forward(self, x:torch.Tensor):
-        return x
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.pe[:x.size(0)]
 
 
 class SingleHeadedAttention(nn.Module):
@@ -23,6 +29,10 @@ class SingleHeadedAttention(nn.Module):
         d_model (int): The dimensions for word embedding for this model
         d_k (int): The dimension for query and key vector
         d_v (int): The dimension for value vector
+    
+    Notes:
+        In attention masks, assign `-torch.inf` (negative infinity) to positions that should be 
+        ignored (masked), and use 0 for all unmasked positions
     """
     def __init__(self, d_model:int, d_k:int, d_v:int):
         super().__init__()
@@ -32,13 +42,16 @@ class SingleHeadedAttention(nn.Module):
         self.wk:torch.nn.Linear = nn.Linear(d_model, d_k)
         self.wv:torch.nn.Linear = nn.Linear(d_model, d_v)
 
-    def forward(self, x:torch.Tensor):
+    def forward(self, x:torch.Tensor, mask:torch.Tensor=None):
         # calculate q, k and v projections
         q:torch.Tensor = self.wq(x)
         k:torch.Tensor = self.wk(x)
         v:torch.Tensor = self.wv(x)
         # calculate attention score
         scores:torch.Tensor = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
+        # apply mask
+        if mask is not None:
+            scores += mask
         # combine attention score with value projection
         result:torch.Tensor = torch.matmul(torch.softmax(scores, -1), v)
         return result
@@ -54,7 +67,9 @@ class MultiHeadedAttention(nn.Module):
         d_v (int): The dimension for value vector in each attention head
     
     Note:
-        `d_model` must be divisible by `h`
+        `d_model` must be divisible by `h`\n
+        In attention masks, assign `-torch.inf` (negative infinity) to positions that should be 
+        ignored (masked), and use 0 for all unmasked positions
     """
     def __init__(self, d_model:int, h:int, d_v:int):
         super().__init__()
@@ -68,7 +83,7 @@ class MultiHeadedAttention(nn.Module):
         self.wk:torch.nn.Linear = nn.Linear(d_model, self.d_k * h)
         self.wv:torch.nn.Linear = nn.Linear(d_model, self.d_v * h)
 
-    def forward(self, x:torch.Tensor):
+    def forward(self, x:torch.Tensor, mask:torch.Tensor=None):
         # get dimensions of input
         batch_size, d_context, d_model = x.shape
         # calculate q, k and v projections and reshape to multiple heads
@@ -79,8 +94,11 @@ class MultiHeadedAttention(nn.Module):
         q = q.transpose(1, 2) # (batch_size, self.h, d_context, self.d_k)
         k = k.transpose(1, 2)
         v = v.transpose(1, 2) # (batch_size, self.h, d_context, self.d_v)
-        # calculate attention scores
+        # calculate attention scores (batch_size, self.h, d_context, d_context)
         scores:torch.Tensor = torch.matmul(q, k.transopose(-2, -1)) / math.sqrt(self.d_k)
+        # apply attention mask
+        if mask is not None:
+            scores += mask.unsqueeze(1)
         # combine attention score with value projection
         result:torch.Tensor = torch.matmul(torch.softmax(scores, -1), v)
         return result
@@ -106,7 +124,3 @@ class FeedForward(nn.Module):
         result = self.relu(result)
         result = self.layer2(result)
         return result
-    
-
-if __name__ == "__main__":
-    pass
