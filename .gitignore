@@ -196,3 +196,6 @@ cython_debug/
 
 # Pytorch
 .pt
+
+# dataset
+datasets/
