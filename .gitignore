@@ -65,7 +65,7 @@ celerybeat.pid
 .pypirc
 
 # Pytorch
-.pt
+*.pt
 
 # datasets folder
 datasets/*
