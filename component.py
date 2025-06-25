@@ -8,7 +8,7 @@ import math
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model:int, max_len:int = 4096):
+    def __init__(self, d_model:int, max_len:int = 256):
         super().__init__()
         position = torch.arange(max_len).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
@@ -95,12 +95,15 @@ class MultiHeadedAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2) # (batch_size, self.h, d_context, self.d_v)
         # calculate attention scores (batch_size, self.h, d_context, d_context)
-        scores:torch.Tensor = torch.matmul(q, k.transopose(-2, -1)) / math.sqrt(self.d_k)
+        scores:torch.Tensor = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
+        print(scores.size())
         # apply attention mask
         if mask is not None:
+            print(mask)
             scores += mask.unsqueeze(1)
         # combine attention score with value projection
         result:torch.Tensor = torch.matmul(torch.softmax(scores, -1), v)
+        result = result.view(batch_size, d_context, d_model)
         return result
         
 

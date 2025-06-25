@@ -2,6 +2,7 @@ import torch
 from transformers import BertTokenizerFast
 from datasets import load_dataset
 
+
 if __name__ == "__main__":
     # initialize tokenizer and IMDB dataset
     tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased", 

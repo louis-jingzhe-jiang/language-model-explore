@@ -107,7 +107,7 @@ class EncoderBasic(nn.Module):
     def __init__(self, num_embeds:int, d_model:int, n_layer:int, h:int, d_ff:int):
         super().__init__()
         self.embedding = nn.Embedding(num_embeds, d_model)
-        self.pos_enc = component.PositionalEncoding()
+        self.pos_enc = component.PositionalEncoding(d_model)
         self.layers = nn.ModuleList([EncoderLayer(d_model, h, d_ff) for _ in range(n_layer)])
         self.norm = nn.LayerNorm(d_model)
 
