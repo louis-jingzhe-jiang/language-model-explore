@@ -100,14 +100,14 @@ class EncoderBasic(nn.Module):
     """
 
     embedding:torch.nn.Embedding
-    pos_enc:component.PositionalEncoding
+    pos_enc:component.PositionalEncodingSinusoidal
     layers:torch.nn.ModuleList
     norm:torch.nn.LayerNorm
 
     def __init__(self, num_embeds:int, d_model:int, n_layer:int, h:int, d_ff:int):
         super().__init__()
         self.embedding = nn.Embedding(num_embeds, d_model)
-        self.pos_enc = component.PositionalEncoding(d_model)
+        self.pos_enc = component.PositionalEncodingSinusoidal(d_model)
         self.layers = nn.ModuleList([EncoderLayer(d_model, h, d_ff) for _ in range(n_layer)])
         self.norm = nn.LayerNorm(d_model)
 
@@ -132,14 +132,14 @@ class EncoderBasic1(nn.Module):
         d_ff (int): The dimension for feed-forward network
     """
     embedding:torch.nn.Embedding
-    pos_enc:component.PositionalEncoding
+    pos_enc:component.PositionalEncodingSinusoidal
     layers:torch.nn.ModuleList
     norm:torch.nn.LayerNorm
 
     def __init__(self, num_embeds:int, d_model:int, n_layer:int, d_ff:int):
         super().__init__()
         self.embedding = nn.Embedding(num_embeds, d_model)
-        self.pos_enc = component.PositionalEncoding()
+        self.pos_enc = component.PositionalEncodingSinusoidal(d_model)
         self.layers = nn.ModuleList([EncoderLayer1(d_model, d_ff) for _ in range(n_layer)])
         self.norm = nn.LayerNorm(d_model)
 

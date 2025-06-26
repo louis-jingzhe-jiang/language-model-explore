@@ -7,7 +7,7 @@ from torch import nn
 import math
 
 
-class PositionalEncoding(nn.Module):
+class PositionalEncodingSinusoidal(nn.Module):
     def __init__(self, d_model:int, max_len:int = 256):
         super().__init__()
         position = torch.arange(max_len).unsqueeze(1)
@@ -96,10 +96,8 @@ class MultiHeadedAttention(nn.Module):
         v = v.transpose(1, 2) # (batch_size, self.h, d_context, self.d_v)
         # calculate attention scores (batch_size, self.h, d_context, d_context)
         scores:torch.Tensor = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
-        print(scores.size())
         # apply attention mask
         if mask is not None:
-            print(mask)
             scores += mask.unsqueeze(1)
         # combine attention score with value projection
         result:torch.Tensor = torch.matmul(torch.softmax(scores, -1), v)

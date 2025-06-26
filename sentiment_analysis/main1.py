@@ -9,6 +9,10 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader
 
 
+global DEVICE
+DEVICE = torch.device("mps" if torch.mps.is_available() else "cpu")
+
+
 class TokenizedDatasetFullMask(Dataset):
     def __init__(self, data_file:str, label_file:str, mask_file:str):
         self.data_tensor:torch.Tensor = torch.load(data_file)
@@ -20,18 +24,6 @@ class TokenizedDatasetFullMask(Dataset):
 
     def __getitem__(self, idx:int):
         return self.data_tensor[idx], self.label_tensor[idx], self.mask_tensor[idx]
-
-
-class TokenizedDatasetFull(Dataset):
-    def __init__(self, data_file:str, label_file:str):
-        self.data_tensor:torch.Tensor = torch.load(data_file)
-        self.label_tensor:torch.Tensor = torch.load(label_file)
-
-    def __len__(self):
-        return self.data_tensor.size(0)
-
-    def __getitem__(self, idx:int):
-        return self.data_tensor[idx], self.label_tensor[idx]
 
 
 class Model1(nn.Module):
@@ -56,7 +48,26 @@ class Model1(nn.Module):
         batch_size, d_context, d_model = x.shape
         x = self.output(x.view(batch_size, d_context * d_model))
         return x
-    
+
+
+def standard_mask(mask:torch.Tensor):
+    n = len(mask[0])
+    mask = torch.where(mask==0, -torch.inf, 0)
+    mask = mask.unsqueeze(1).expand(-1, n, -1)
+    return mask.to(DEVICE)
+
+
+def modified_mask(mask:torch.Tensor):
+    n:int = len(mask[0])
+    mask = mask.unsqueeze(1).repeat(1, n, 1)
+    empty:torch.Tensor = torch.zeros(n)
+    for i in range(len(mask)):
+        not_masked:int = sum(mask[i][0])
+        for j in range(not_masked, n):
+            mask[i][j] = empty
+    mask = torch.where(mask==0, -torch.inf, 0)
+    return mask.to(DEVICE)
+
 
 if __name__ == "__main__":
     # model constants
@@ -65,7 +76,6 @@ if __name__ == "__main__":
     N_LAYER = 1
     H = 1
     D_FF = 512
-    DEVICE = torch.device("mps" if torch.mps.is_available() else "cpu")
 
     # prepare dataset
     train_data = TokenizedDatasetFullMask("train_input.pt", "train_label.pt", "train_mask.pt")
@@ -73,25 +83,79 @@ if __name__ == "__main__":
     test_data = TokenizedDatasetFullMask("test_input.pt", "test_label.pt", "test_mask.pt")
     test_loader = DataLoader(test_data, batch_size=32, shuffle=True)
 
-    print(train_data.mask_tensor)
-
     # create model
     model1 = Model1(VOCAB_SIZE, D_MODEL, N_LAYER, H, D_FF)
     model1.to(DEVICE)
 
     # training constants and parameters
-    N_EPOCH = 5
-    LR = 0.001
+    N_EPOCH = 8
+    LR = 0.00001
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model1.parameters(), lr=LR)
 
-    # training loop
+    # approach 1: training loop with no mask
+    print("Approach 1: no attention masking")
     for epoch in range(N_EPOCH):
+        print(f"Epoch [{epoch+1}/{N_EPOCH}]:", end=" ")
+        model1.train()
+        running_loss = 0.0
+        for data, label, mask in train_loader:
+            output = model1(data.to(DEVICE))
+            loss = criterion(output, label.to(DEVICE))
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item() * data.size(0)
+        epoch_loss = running_loss / len(train_data)
+        # evalulation
+        print(f"Train Loss: {epoch_loss:.4f},", end=" ")
+        model1.eval()
+        eval_loss = 0.0
+        with torch.no_grad():
+            for data, label, mask in test_loader:
+                output = model1(data.to(DEVICE))
+                loss = criterion(output, label.to(DEVICE))
+                eval_loss += loss.item() * data.size(0)
+        eval_loss = eval_loss / len(test_data)
+        # show result
+        print(f"Eval Loss: {eval_loss:.4f}")
+    
+    # approach 2: standard masking
+    print("Approach 2: standard encoder masking")
+    for epoch in range(N_EPOCH):
+        print(f"Epoch [{epoch+1}/{N_EPOCH}]:", end=" ")
+        model1.train()
+        running_loss = 0.0
+        for data, label, mask in train_loader:
+            output = model1(data.to(DEVICE), mask=standard_mask(mask))
+            loss = criterion(output, label.to(DEVICE))
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item() * data.size(0)
+        epoch_loss = running_loss / len(train_data)
+        # evalulation
+        print(f"Train Loss: {epoch_loss:.4f},", end=" ")
+        model1.eval()
+        eval_loss = 0.0
+        with torch.no_grad():
+            for data, label, mask in test_loader:
+                output = model1(data.to(DEVICE), mask=standard_mask(mask))
+                loss = criterion(output, label.to(DEVICE))
+                eval_loss += loss.item() * data.size(0)
+        eval_loss = eval_loss / len(test_data)
+        # show result
+        print(f"Eval Loss: {eval_loss:.4f}")
+
+    # approach 3: modified masking
+    print("Approach 3: modified encoder masking")
+    for epoch in range(N_EPOCH):
+        print(f"Epoch [{epoch+1}/{N_EPOCH}]:", end=" ")
         model1.train()
         running_loss = 0.0
         for data, label, mask in train_loader:
             # process mask
-            print(mask)
+            
             output = model1(data.to(DEVICE), mask=mask.to(DEVICE))
             loss = criterion(output, label.to(DEVICE))
             optimizer.zero_grad()
@@ -100,6 +164,7 @@ if __name__ == "__main__":
             running_loss += loss.item() * data.size(0)
         epoch_loss = running_loss / len(train_data)
         # evalulation
+        print(f"Train Loss: {epoch_loss:.4f},", end=" ")
         model1.eval()
         eval_loss = 0.0
         with torch.no_grad():
@@ -111,5 +176,4 @@ if __name__ == "__main__":
                 eval_loss += loss.item() * data.size(0)
         eval_loss = eval_loss / len(test_data)
         # show result
-        print(f'Epoch [{epoch+1}/{N_EPOCH}], Loss: {epoch_loss:.4f}, Eval Loss: {eval_loss:.4f}')
-        
+        print(f"Eval Loss: {eval_loss:.4f}")
