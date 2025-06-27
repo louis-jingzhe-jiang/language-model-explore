@@ -83,17 +83,16 @@ if __name__ == "__main__":
     test_data = TokenizedDatasetFullMask("test_input.pt", "test_label.pt", "test_mask.pt")
     test_loader = DataLoader(test_data, batch_size=32, shuffle=True)
 
-    # create model
-    model1 = Model1(VOCAB_SIZE, D_MODEL, N_LAYER, H, D_FF)
-    model1.to(DEVICE)
-
     # training constants and parameters
     N_EPOCH = 8
     LR = 0.00001
+    
+    # approach 1: training loop with no mask
+    model1 = Model1(VOCAB_SIZE, D_MODEL, N_LAYER, H, D_FF)
+    model1.to(DEVICE)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model1.parameters(), lr=LR)
-
-    # approach 1: training loop with no mask
+    
     print("Approach 1: no attention masking")
     for epoch in range(N_EPOCH):
         print(f"Epoch [{epoch+1}/{N_EPOCH}]:", end=" ")
@@ -121,6 +120,11 @@ if __name__ == "__main__":
         print(f"Eval Loss: {eval_loss:.4f}")
     
     # approach 2: standard masking
+    model1 = Model1(VOCAB_SIZE, D_MODEL, N_LAYER, H, D_FF)
+    model1.to(DEVICE)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model1.parameters(), lr=LR)
+
     print("Approach 2: standard encoder masking")
     for epoch in range(N_EPOCH):
         print(f"Epoch [{epoch+1}/{N_EPOCH}]:", end=" ")
@@ -146,17 +150,20 @@ if __name__ == "__main__":
         eval_loss = eval_loss / len(test_data)
         # show result
         print(f"Eval Loss: {eval_loss:.4f}")
-
+    
     # approach 3: modified masking
+    model1 = Model1(VOCAB_SIZE, D_MODEL, N_LAYER, H, D_FF)
+    model1.to(DEVICE)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model1.parameters(), lr=LR)
+
     print("Approach 3: modified encoder masking")
     for epoch in range(N_EPOCH):
         print(f"Epoch [{epoch+1}/{N_EPOCH}]:", end=" ")
         model1.train()
         running_loss = 0.0
         for data, label, mask in train_loader:
-            # process mask
-            
-            output = model1(data.to(DEVICE), mask=mask.to(DEVICE))
+            output = model1(data.to(DEVICE), mask=modified_mask(mask))
             loss = criterion(output, label.to(DEVICE))
             optimizer.zero_grad()
             loss.backward()
@@ -169,9 +176,7 @@ if __name__ == "__main__":
         eval_loss = 0.0
         with torch.no_grad():
             for data, label, mask in test_loader:
-                # process mask
-                
-                output = model1(data.to(DEVICE), mask=mask.to(DEVICE))
+                output = model1(data.to(DEVICE), mask=modified_mask(mask))
                 loss = criterion(output, label.to(DEVICE))
                 eval_loss += loss.item() * data.size(0)
         eval_loss = eval_loss / len(test_data)
